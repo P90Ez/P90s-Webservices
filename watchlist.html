@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manu's Watchlist</title>
+
+    <style>
+        /* ---------- Global Dark Theme ---------- */
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: #ddd;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 900px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #fff;
+        }
+
+        /* ---------- Tabs ---------- */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+
+        .tab-button {
+            background: #222;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            color: #ccc;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 6px;
+            transition: 0.2s;
+        }
+
+        .tab-button:hover {
+            background: #333;
+        }
+
+        .tab-button.active {
+            background: #4a65e8;
+            color: white;
+        }
+
+        /* ---------- Search Bar ---------- */
+        .search-container {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: none;
+            font-size: 16px;
+            background: #222;
+            color: #ddd;
+        }
+
+        /* ---------- Anime List Items ---------- */
+        .anime-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .anime-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .anime-link:hover {
+            text-decoration: none;
+        }
+
+        .anime-item {
+            display: flex;
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            gap: 15px;
+            align-items: center;
+            transition: 0.2s;
+        }
+
+        .anime-item:hover {
+            background: #222;
+        }
+
+        .anime-item img {
+            width: 90px;
+            height: 125px;
+            object-fit: cover;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .anime-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .anime-title-en {
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .anime-title-jp {
+            font-size: 14px;
+            font-weight: bold;
+            color: #aaa;
+            margin-top: 3px;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        /* ---------- Mobile Styling ---------- */
+        @media (max-width: 600px) {
+            .anime-item {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .anime-item img {
+                width: 180px;
+                height: auto;
+            }
+
+            .anime-title-en {
+                font-size: 22px;
+            }
+
+            .anime-title-jp {
+                font-size: 16px;
+            }
+
+            .search-input {
+                font-size: 18px;
+                padding: 12px 16px;
+            }
+
+            .tab-button {
+                font-size: 18px;
+                padding: 12px 22px;
+            }
+        }
+    </style>
+
+</head>
+<body>
+
+<div class="container">
+
+    <h1>Manu's Watchlist</h1>
+
+    <div class="tabs">
+        <button class="tab-button active" data-tab="Completed">Completed</button>
+        <button class="tab-button" data-tab="ToWatch">To Watch</button>
+        <button class="tab-button" data-tab="Dropped">Dropped</button>
+    </div>
+
+    <div class="search-container">
+        <input type="text" class="search-input" id="search" placeholder="Search anime...">
+    </div>
+
+    <div id="anime-list" class="anime-list"></div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    let data = {};
+    let activeTab = "Completed";
+
+    const listContainer = document.getElementById("anime-list");
+    const searchInput = document.getElementById("search");
+    const tabButtons = document.querySelectorAll(".tab-button");
+
+    //load json
+    fetch("AnimeWatchlist.json")
+        .then(res => res.json())
+        .then(json => {
+            data = json;
+            loadTab(activeTab);
+        });
+
+    //tab switching
+    tabButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelector(".tab-button.active")?.classList.remove("active");
+            btn.classList.add("active");
+            activeTab = btn.dataset.tab;
+            loadTab(activeTab);
+        });
+    });
+
+    //search
+    searchInput.addEventListener("input", () => loadTab(activeTab));
+
+    function loadTab(tabName) {
+        listContainer.innerHTML = "";
+
+        const list = (data[tabName] || []).filter(anime =>
+            anime.name_en.toLowerCase().includes(searchInput.value.toLowerCase()) ||
+            anime.name_jp.toLowerCase().includes(searchInput.value.toLowerCase())
+        );
+
+        list.forEach(anime => {
+            const item = document.createElement("div");
+            item.className = "anime-item";
+            let name_main = anime.name_en;
+            let name_sub = "";
+            if(name_main == "") name_main = anime.name_jp;
+            else name_sub = anime.name_jp;
+
+            item.innerHTML = `
+                <img src="${anime.image_url}" alt="${name_main}">
+                <div class="anime-info">
+                    <span class="anime-title-en">${name_main}</span>
+                    <span class="anime-title-jp">${name_sub}</span>
+                </div>
+            `;
+
+            const linkWrapper = document.createElement("a");
+            linkWrapper.href = anime.link;
+            linkWrapper.target = "_blank";
+            linkWrapper.className = "anime-link";
+
+            linkWrapper.appendChild(item);
+            listContainer.appendChild(linkWrapper);
+        });
+    }
+});
+</script>
+
+</body>
+</html>
