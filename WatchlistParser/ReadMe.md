@@ -22,6 +22,4 @@ Both arguments are optional. If no input is specified, `WatchlistRaw.json` is th
 
 ## Todo
 
-- Add an update mechanism, to only add shows that are not present in the output file
 - Improve performance (async etc.)
-- Improve error handling and add retries on API disconnect / timeout

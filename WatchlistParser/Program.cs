@@ -15,34 +15,51 @@ class Program
             return -1;
         }
 
+        //load previous output if exists
+        string WatchlistOutputPath = args.Length >= 2 ? args[1] : "WatchlistProcessed.json";
+        OutputStructure? PreviousOutput = OutputStructure.FromFile(WatchlistOutputPath);
+
+        List<OutputStructure.Entry> ParsedDataPool = [];
+        if(PreviousOutput != null)
+        {
+            ParsedDataPool.AddRange(PreviousOutput.Completed);
+            ParsedDataPool.AddRange(PreviousOutput.Dropped);
+            ParsedDataPool.AddRange(PreviousOutput.ToWatch);
+        }
+
         MALApi MAL = new MALApi("Credentials.json");
         OutputStructure OutputWatchlist = new OutputStructure();
 
         //process watchlist
-        OutputWatchlist.Completed = ProcessSection(MAL, InputWatchlist.Completed);
-        OutputWatchlist.Dropped = ProcessSection(MAL, InputWatchlist.Dropped);
-        OutputWatchlist.ToWatch = ProcessSection(MAL, InputWatchlist.Watching);
-        OutputWatchlist.ToWatch.AddRange(ProcessSection(MAL, InputWatchlist.PlanToWatch));
+        OutputWatchlist.Completed = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Completed);
+        OutputWatchlist.Dropped = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Dropped);
+        OutputWatchlist.ToWatch = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Watching);
+        OutputWatchlist.ToWatch.AddRange(ProcessSection(MAL, ParsedDataPool, InputWatchlist.PlanToWatch));
 
         //write processed watchlist
-        string WatchlistOutputPath = args.Length >= 2 ? args[1] : "WatchlistProcessed.json";
         return OutputWatchlist.ToFile(WatchlistOutputPath) ? 0 : -2;
     }
     
-    static List<OutputStructure.OutputEntry> ProcessSection(MALApi MAL, List<InputStructure.InputEntry> WatchlistSection)
+    static List<OutputStructure.Entry> ProcessSection(MALApi MAL, List<OutputStructure.Entry> ParsedDataPool, List<InputStructure.Entry> WatchlistSection)
     {
-        List<OutputStructure.OutputEntry> Output = [];
+        List<OutputStructure.Entry> Output = [];
 
-        foreach (var Entry in WatchlistSection)
+        foreach (var InputEntry in WatchlistSection)
         {
-            var OutputEntry = MAL.CreateEntryFromId(Entry.MALId);
-            if (OutputEntry == null)
+            OutputStructure.Entry? OutputEntry = ParsedDataPool.Where(x => x.MALId == InputEntry.MALId).FirstOrDefault();
+
+            if (OutputEntry == null) //only request data from MAL if item is new on watchlist
             {
-                Console.WriteLine($"Failed to process entry {Entry.MALId} \"{Entry.Name}\"!");
-                continue;
+                OutputEntry = MAL.CreateEntryFromId(InputEntry.MALId);
+                if (OutputEntry == null)
+                {
+                    Console.WriteLine($"Failed to process entry {InputEntry.MALId} \"{InputEntry.Name}\"!");
+                    continue;
+                }
+
+                OutputEntry.Link = InputEntry.Link; //manually assign link to MAL page - is not included in API endpoint as link is only dependent on MALId
             }
 
-            OutputEntry.Link = Entry.Link; //manually assign link to MAL page - is not included in API endpoint as link is only dependent on MALId
             Output.Add(OutputEntry);
         }
 
@@ -70,28 +87,63 @@ class MALApi
     /// </summary>
     /// <param name="MALId">MAL Id of anime which to request details on.</param>
     /// <returns>Filled OutputEntry on success, false otherwise.</returns>
-    public OutputStructure.OutputEntry? CreateEntryFromId(ulong MALId)
+    public OutputStructure.Entry? CreateEntryFromId(ulong MALId)
     {
-        try
-        {
-            string Result = Client.GetStringAsync(BaseURL + $"/anime/{MALId}?fields=title,main_picture,alternative_titles").Result;
+        const int MaxRetries = 3;
+        OutputStructure.Entry? Output = null;
 
-            AnimeDetails? Details = JsonConvert.DeserializeObject<AnimeDetails>(Result);
-            if (Details == null) return null;
+        RetryCatch(
+            () => {
+                string Result = Client.GetStringAsync(BaseURL + $"/anime/{MALId}?fields=title,main_picture,alternative_titles").Result;
 
-            return new OutputStructure.OutputEntry(MALId)
+                AnimeDetails? Details = JsonConvert.DeserializeObject<AnimeDetails>(Result);
+                if (Details == null) return false;
+
+                Output = new OutputStructure.Entry(MALId)
+                {
+                    NameEnglish = Details.Titles.English,
+                    NameJapanese = Details.MainTitle,
+                    ImageURL = Details.Images.Medium,
+                };
+                return true;
+            },
+            (Exception ex) =>
             {
-                NameEnglish = Details.Titles.English,
-                NameJapanese = Details.MainTitle,
-                ImageURL = Details.Images.Medium,
-            };
-        }
-        catch (Exception ex)
+                Console.WriteLine($"Failed to create entry for id {MALId}:\n" + ex.Message);
+            },
+            MaxRetries);
+
+        return Output;
+    }
+
+    /// <summary>
+    /// Utilizes Try-Catch to retry a function for a given number of times. On the final catch, the provided Catch function is called.
+    /// </summary>
+    /// <param name="Try">Code to try a provided number of times.</param>
+    /// <param name="Catch">Catch function to be called on the final catch.</param>
+    /// <param name="MaxRetries">Number of retries.</param>
+    /// <param name="Delay">Delay between retries.</param>
+    /// <returns>True if provided function was successful, false of max retries are reached without success.</returns>
+    private static bool RetryCatch(Func<bool> Try, Action<Exception> Catch, int MaxRetries, TimeSpan? Delay = null)
+    {
+        int TryCycle = 0;
+        bool Success = false;
+
+        while (!Success && TryCycle < MaxRetries)
         {
-            Console.WriteLine($"Failed to create entry for id {MALId}:\n" + ex.Message);
+            TryCycle++;
+            try
+            {
+                Success = Try();
+            }
+            catch (Exception ex)
+            {
+                if (TryCycle >= MaxRetries) Catch(ex);
+                else if (Delay != null) Thread.Sleep((TimeSpan)Delay);
+            }
         }
 
-        return null;
+        return Success;
     }
 
     private class AnimeDetails
@@ -141,7 +193,7 @@ class MALApi
 
 class InputStructure : ParsableJsonStructure
 {
-    public struct InputEntry
+    public struct Entry
     {
         [JsonProperty(PropertyName = "link")]
         public string Link;
@@ -153,20 +205,20 @@ class InputStructure : ParsableJsonStructure
         public int ListType;
     }
 
-    public List<InputEntry> Watching = [];
-    public List<InputEntry> Completed = [];
+    public List<Entry> Watching = [];
+    public List<Entry> Completed = [];
     [JsonProperty(PropertyName = "Plan to Watch")]
-    public List<InputEntry> PlanToWatch = [];
-    public List<InputEntry> Dropped = [];
+    public List<Entry> PlanToWatch = [];
+    public List<Entry> Dropped = [];
 
     public static InputStructure? FromFile(string Path) => FromFile<InputStructure>(Path);
 }
 
 class OutputStructure : ParsableJsonStructure
 {
-    public class OutputEntry
+    public class Entry
     {
-        public OutputEntry(ulong MALId)
+        public Entry(ulong MALId)
         {
             this.MALId = MALId;
         }
@@ -184,11 +236,12 @@ class OutputStructure : ParsableJsonStructure
     }
 
     public DateTime LastUpdated = DateTime.Now;
-    public List<OutputEntry> ToWatch = [];
-    public List<OutputEntry> Completed = [];
-    public List<OutputEntry> Dropped = [];
+    public List<Entry> ToWatch = [];
+    public List<Entry> Completed = [];
+    public List<Entry> Dropped = [];
 
     public bool ToFile(string Path) => ToFile(this, Path);
+    public static OutputStructure? FromFile(string Path) => FromFile<OutputStructure>(Path);
 }
 
 abstract class ParsableJsonStructure
