@@ -222,7 +222,7 @@
 
     <h1>Manu's Watchlist</h1>
 
-    <div class="tabs">
+    <div class="tabs" id="tab-buttons">
         <button class="tab-button active" data-tab="Completed">Completed</button>
         <button class="tab-button" data-tab="ToWatch">To Watch</button>
         <button class="tab-button" data-tab="Dropped">Dropped</button>
@@ -247,6 +247,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchInput = document.getElementById("search");
     const tabButtons = document.querySelectorAll(".tab-button");
 
+    searchInput.value = "";
+
     //load json
     fetch("AnimeWatchlist.json")
         .then(res => res.json())
@@ -259,8 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 updated = date.toISOString().split("T")[0];
             }
 
-            const LastUpdatedSpan = document.getElementById("last-updated");
-            LastUpdatedSpan.innerHTML = `Last updated: <strong>${updated}</strong>`
+            document.getElementById("last-updated").innerHTML = `Last updated: <strong>${updated}</strong>`;
 
             loadTab(activeTab);
         });
@@ -271,48 +272,102 @@ document.addEventListener("DOMContentLoaded", () => {
             document.querySelector(".tab-button.active")?.classList.remove("active");
             btn.classList.add("active");
             activeTab = btn.dataset.tab;
+
+            searchInput.value = "";
+
             loadTab(activeTab);
         });
     });
 
     //search
-    searchInput.addEventListener("input", () => loadTab(activeTab));
+    searchInput.addEventListener("input", () => searchHandler());
+
+    function searchHandler() {
+        if(searchInput.value == "") { //search bar empty -> normal display of tabs
+            loadTab(activeTab);
+            return;
+        }
+
+        listContainer.innerHTML = "";
+
+        const searchFilter = anime =>
+            anime.name_en.toLowerCase().includes(searchInput.value.toLowerCase()) ||
+            anime.name_jp.toLowerCase().includes(searchInput.value.toLowerCase());
+
+        //filter for each list type individually and add label before search results
+        const listCompleted = (data["Completed"] || []).filter(searchFilter);
+        if(listCompleted.length > 0) {
+            const categoryItem = document.createElement("span");
+            categoryItem.innerHTML = `<strong>Completed:</strong>`;
+            listContainer.appendChild(categoryItem);
+
+            listCompleted.forEach(anime => {
+                listContainer.appendChild(buildListEntry(anime));
+            });
+        }
+
+        const listToWatch = (data["ToWatch"] || []).filter(searchFilter);
+        if(listToWatch.length > 0) {
+            const categoryItem = document.createElement("span");
+            categoryItem.innerHTML = `<strong>To Watch:</strong>`;
+            listContainer.appendChild(categoryItem);
+
+            listToWatch.forEach(anime => {
+                listContainer.appendChild(buildListEntry(anime));
+            });
+        }
+
+        const listDropped = (data["Dropped"] || []).filter(searchFilter);
+        if(listDropped.length > 0) {
+            const categoryItem = document.createElement("span");
+            categoryItem.innerHTML = `<strong>Dropped:</strong>`;
+            listContainer.appendChild(categoryItem);
+
+            listDropped.forEach(anime => {
+                listContainer.appendChild(buildListEntry(anime));
+            });
+        }
+
+        //update number of items
+        const NumberOfItems = listCompleted.length + listToWatch.length + listDropped.length;
+        document.getElementById("displayed-items").innerHTML = `${NumberOfItems} items`;
+    }
 
     function loadTab(tabName) {
         listContainer.innerHTML = "";
 
-        const list = (data[tabName] || []).filter(anime =>
-            anime.name_en.toLowerCase().includes(searchInput.value.toLowerCase()) ||
-            anime.name_jp.toLowerCase().includes(searchInput.value.toLowerCase())
-        );
+        const list = (data[tabName] || []);
 
         list.forEach(anime => {
-            const item = document.createElement("div");
-            item.className = "anime-item";
-            let name_main = anime.name_en;
-            let name_sub = "";
-            if(name_main == "") name_main = anime.name_jp;
-            else name_sub = anime.name_jp;
-
-            item.innerHTML = `
-                <img src="${anime.image_url}" alt="${name_main}">
-                <div class="anime-info">
-                    <span class="anime-title-en">${name_main}</span>
-                    <span class="anime-title-jp">${name_sub}</span>
-                </div>
-            `;
-
-            const linkWrapper = document.createElement("a");
-            linkWrapper.href = anime.link;
-            linkWrapper.target = "_blank";
-            linkWrapper.className = "anime-link";
-
-            linkWrapper.appendChild(item);
-            listContainer.appendChild(linkWrapper);
+            listContainer.appendChild(buildListEntry(anime));
         });
 
-        const NumberOfItems = document.getElementById("displayed-items");
-        NumberOfItems.innerHTML = `${list.length} items`;
+        document.getElementById("displayed-items").innerHTML = `${list.length} items`;
+    }
+
+    function buildListEntry(dataEntry) {
+        const item = document.createElement("div");
+        item.className = "anime-item";
+        let name_main = dataEntry.name_en;
+        let name_sub = "";
+        if(name_main == "") name_main = dataEntry.name_jp;
+        else name_sub = dataEntry.name_jp;
+
+        item.innerHTML = `
+            <img src="${dataEntry.image_url}" alt="${name_main}">
+            <div class="anime-info">
+                <span class="anime-title-en">${name_main}</span>
+                <span class="anime-title-jp">${name_sub}</span>
+            </div>
+        `;
+
+        const linkWrapper = document.createElement("a");
+        linkWrapper.href = dataEntry.link;
+        linkWrapper.target = "_blank";
+        linkWrapper.className = "anime-link";
+
+        linkWrapper.appendChild(item);
+        return linkWrapper;
     }
 });
 </script>
