@@ -92,7 +92,7 @@ class MALApi
 
         RetryCatch(
             () => {
-                string Result = Client.GetStringAsync(BaseURL + $"/anime/{MALId}?fields=title,main_picture,alternative_titles").Result;
+                string Result = Client.GetStringAsync(BaseURL + $"/anime/{MALId}?fields=title,main_picture,alternative_titles,start_date,mean,genres,num_episodes").Result;
 
                 AnimeDetails? Details = JsonConvert.DeserializeObject<AnimeDetails>(Result);
                 if (Details == null) return false;
@@ -101,8 +101,13 @@ class MALApi
                 {
                     NameEnglish = Details.Titles.English,
                     NameJapanese = Details.MainTitle,
-                    ImageURL = Details.Images.Medium
+                    ImageURL = Details.Images.Medium,
+                    StartDate = Details.StartDate,
+                    Rating = Details.Rating,
+                    NumberOfEpisodes = Details.NumberOfEpisodes
                 };
+                Details.Genres.ForEach(Genre => Output.Genres.Add(Genre.Name));
+                
                 return true;
             },
             (Exception ex) =>
@@ -146,6 +151,31 @@ class MALApi
 
     private class AnimeDetails
     {
+        [JsonProperty("id")]
+        public int? MALId { get; set; }
+
+        [JsonProperty("title")]
+        public string MainTitle { get; set; } = string.Empty;
+
+        [JsonProperty("main_picture")]
+        public MainPicture Images { get; set; }
+
+        [JsonProperty("alternative_titles")]
+        public AlternativeTitles Titles { get; set; }
+        
+        [JsonProperty("start_date")]
+        public DateOnly StartDate { get; set; }
+
+        [JsonProperty("mean")]
+        public double Rating { get; set; }
+
+        [JsonProperty("genres")]
+        public List<GenreBlock> Genres { get; set; } = [];
+
+        [JsonProperty("num_episodes")]
+        public int NumberOfEpisodes { get; set; }
+
+        
         public struct AlternativeTitles
         {
             [JsonProperty("en")]
@@ -164,17 +194,14 @@ class MALApi
             public string Large { get; set; }
         }
 
-        [JsonProperty("id")]
-        public int? MALId { get; set; }
+        public struct GenreBlock
+        {
+            [JsonProperty("id")]
+            public int Id { get; set; }
 
-        [JsonProperty("title")]
-        public string MainTitle { get; set; } = string.Empty;
-
-        [JsonProperty("main_picture")]
-        public MainPicture Images { get; set; }
-
-        [JsonProperty("alternative_titles")]
-        public AlternativeTitles Titles { get; set; }
+            [JsonProperty("name")]
+            public string Name { get; set; }
+        }
     }
 
     private class Credentials : ParsableJsonStructure
@@ -224,14 +251,30 @@ class OutputStructure : ParsableJsonStructure
 
         [JsonProperty(PropertyName = "name_en")]
         public string NameEnglish = string.Empty;
+
         [JsonProperty(PropertyName = "name_jp")]
         public string NameJapanese = string.Empty;
+
         [JsonProperty(PropertyName = "mal_id")]
         public ulong MALId;
+
         [JsonProperty(PropertyName = "link")]
         public string Link = string.Empty;
+
         [JsonProperty(PropertyName = "image_url")]
         public string ImageURL = string.Empty;
+
+        [JsonProperty("start_date")]
+        public DateOnly StartDate;
+
+        [JsonProperty("rating")]
+        public double Rating;
+
+        [JsonProperty("genres")]
+        public List<string> Genres = [];
+        
+        [JsonProperty("num_episodes")]
+        public int NumberOfEpisodes;
     }
 
     public DateTime LastUpdated = DateTime.Now;
