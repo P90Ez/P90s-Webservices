@@ -26,6 +26,19 @@
             color: #fff;
         }
 
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .data-information {
+            display: flex;
+            justify-content: center;
+            text-align: center;
+            margin: 25px 0;
+            font-size: 12px;
+        }
+
         /* ---------- Tabs ---------- */
         .tabs {
             display: flex;
@@ -53,14 +66,6 @@
         .tab-button.active {
             background: #4a65e8;
             color: white;
-        }
-
-        .data-information {
-            display: flex;
-            justify-content: center;
-            text-align: center;
-            margin: 25px 0;
-            font-size: 12px;
         }
 
         /* ---------- Search Bar ---------- */
@@ -96,6 +101,7 @@
         }
 
         .anime-link {
+            position: relative;
             text-decoration: none;
             color: inherit;
             display: block;
@@ -145,9 +151,44 @@
             margin-top: 3px;
         }
 
-        a {
-            color: inherit;
-            text-decoration: none;
+        /* ---------- Tool Tip ---------- */
+        .tooltip {
+            display: none;
+            position: absolute;
+            left: 50%;
+            top: 105%;
+            transform: translateX(-50%);
+            background: #222;
+            color: #eee;
+            padding: 15px;
+            border-radius: 8px;
+            width: 260px;
+            font-size: 14px;
+            line-height: 1.4;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            z-index: 20;
+        }
+
+        .anime-link:hover .tooltip {
+            display: block;
+        }
+
+        .tooltip-title {
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        .tooltip-item {
+            margin: 3px 0;
+        }
+
+        .star-icon {
+            width: 18px;
+            height: 18px;
+            color: gold;
+            vertical-align: -4px;
+            margin-right: 1px;
         }
 
         /* ---------- Info Bar ---------- */
@@ -209,6 +250,13 @@
             .tab-button {
                 font-size: 18px;
                 padding: 12px 22px;
+            }
+
+            .tooltip {
+                width: 90vw;
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 16px;
             }
         }
     </style>
@@ -360,13 +408,28 @@ document.addEventListener("DOMContentLoaded", () => {
         let name_main = dataEntry.name_en;
         let name_sub = "";
         if(name_main == "") name_main = dataEntry.name_jp;
-        else name_sub = dataEntry.name_jp;
+        else if(name_main.toLowerCase() != dataEntry.name_jp.toLowerCase()) name_sub = dataEntry.name_jp;
+
+        const StarSVGPath = `<path fill="currentColor" d="M15.791,19.5,10.262,16.6,4.732,19.5a.75.75,0,0,1-1.088-.79L4.7,12.557.228,8.2a.75.75,0,0,1,.415-1.28l6.182-.9L9.589.419a.75.75,0,0,1,1.345,0l2.764,5.6,6.182.9A.751.751,0,0,1,20.3,8.2l-4.473,4.36,1.056,6.157a.748.748,0,0,1-1.088.79Z"/>`;
 
         item.innerHTML = `
             <img src="${dataEntry.image_url}" alt="${name_main}">
             <div class="anime-info">
                 <span class="anime-title-en">${name_main}</span>
                 <span class="anime-title-jp">${name_sub}</span>
+            </div>
+
+            <div class="tooltip">
+                <div class="tooltip-title">${name_main}</div>
+                <div class="tooltip-item">
+                    <svg class="star-icon" viewBox="0 0 24 24">
+                        ${StarSVGPath}
+                    </svg>
+                    ${dataEntry.rating ?? "Unknown"}
+                </div>
+                <div class="tooltip-item"><strong>Episodes:</strong> ${dataEntry.num_episodes ?? "?"}</div>
+                <div class="tooltip-item"><strong>Aired:</strong> ${dataEntry.start_date ?? "Unknown"}</div>
+                <div class="tooltip-item"><strong>Genres:</strong> ${(dataEntry.genres ?? []).join(", ")}</div>
             </div>
         `;
 
