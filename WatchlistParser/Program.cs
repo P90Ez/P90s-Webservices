@@ -56,8 +56,6 @@ class Program
                     Console.WriteLine($"Failed to process entry {InputEntry.MALId} \"{InputEntry.Name}\"!");
                     continue;
                 }
-
-                OutputEntry.Link = InputEntry.Link; //manually assign link to MAL page - is not included in API endpoint as link is only dependent on MALId
             }
 
             Output.Add(OutputEntry);
@@ -103,7 +101,7 @@ class MALApi
                 {
                     NameEnglish = Details.Titles.English,
                     NameJapanese = Details.MainTitle,
-                    ImageURL = Details.Images.Medium,
+                    ImageURL = Details.Images.Medium
                 };
                 return true;
             },
@@ -221,6 +219,7 @@ class OutputStructure : ParsableJsonStructure
         public Entry(ulong MALId)
         {
             this.MALId = MALId;
+            this.Link = $"https://myanimelist.net/anime/{MALId}";
         }
 
         [JsonProperty(PropertyName = "name_en")]
