@@ -183,6 +183,7 @@ class OutputStructure : ParsableJsonStructure
         public string ImageURL = string.Empty;
     }
 
+    public DateTime LastUpdated = DateTime.Now;
     public List<OutputEntry> ToWatch = [];
     public List<OutputEntry> Completed = [];
     public List<OutputEntry> Dropped = [];
