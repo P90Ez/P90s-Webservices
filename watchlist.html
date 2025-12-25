@@ -425,7 +425,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <svg class="star-icon" viewBox="0 0 24 24">
                         ${StarSVGPath}
                     </svg>
-                    ${dataEntry.rating ?? "Unknown"}
+                    ${dataEntry.rating == null || dataEntry.rating == 0 ? "N/A" : dataEntry.rating}
                 </div>
                 <div class="tooltip-item"><strong>Episodes:</strong> ${dataEntry.num_episodes ?? "?"}</div>
                 <div class="tooltip-item"><strong>Aired:</strong> ${dataEntry.start_date ?? "Unknown"}</div>
