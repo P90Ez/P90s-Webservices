@@ -1,3 +1,4 @@
 WatchlistParser/bin/
 WatchlistParser/obj/
 WatchlistParser/Credentials.json
+*.sln
