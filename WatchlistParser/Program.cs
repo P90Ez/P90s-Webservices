@@ -48,7 +48,7 @@ class Program
         {
             OutputStructure.Entry? OutputEntry = ParsedDataPool.Where(x => x.MALId == InputEntry.MALId).FirstOrDefault();
 
-            if (OutputEntry == null) //only request data from MAL if item is new on watchlist
+            if (OutputEntry == null || OutputEntry.NumberOfEpisodes == 0) //only request data from MAL if item is new on watchlist or if the final number of episodes was not known the last time the item was pulled from MAL
             {
                 OutputEntry = MAL.CreateEntryFromId(InputEntry.MALId);
                 if (OutputEntry == null)
