@@ -1,252 +1,108 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.VisualBasic;
+using Newtonsoft.Json;
+using P90Ez.MALApi;
+using P90Ez.MALApi.Structures;
 namespace WatchlistParser;
 
 class Program
 {
     static int Main(string[] args)
     {
-        //read raw watchlist
-        string WatchlistRawPath = args.Length >= 1 ? args[0] : "WatchlistRaw.json";
+        string WatchlistOutputPath = args.Length >= 1 ? args[0] : "WatchlistProcessed.json";
+        string CredentialsFilename = args.Length >= 2 ? args[1] : "Credentials.json";
 
-        InputStructure? InputWatchlist = InputStructure.FromFile(WatchlistRawPath);
-        if (InputWatchlist == null)
+        //attempt to read credentials from file
+        AccessTokenHandler? MalTokenHandler = AccessTokenHandler.FromFile(CredentialsFilename);
+
+        //manually enter credentials and create token
+        if (MalTokenHandler == null)
         {
-            Console.WriteLine($"Failed to parse input list! (File: {WatchlistRawPath})");
-            return -1;
+            Console.WriteLine("Failed to read credentials from file. Restart or enter MAL Api Client information below.");
+
+            Console.Write("Client Id: ");
+            string ClientId = Console.ReadLine() ?? "";
+
+            Console.Write("Client Secret: ");
+            string ClientSecret = Console.ReadLine() ?? "";
+
+            Console.Write("Redirect URI (default: http://127.0.0.1:9876/): ");
+            string RedirectURI = Console.ReadLine() ?? "";
+
+            if (RedirectURI != string.Empty) MalTokenHandler = new AccessTokenHandler(ClientId, ClientSecret, RedirectURI, CredentialsFilename);
+            else MalTokenHandler = new AccessTokenHandler(ClientId, ClientSecret, CredentialsFilename: CredentialsFilename);
         }
 
-        //load previous output if exists
-        string WatchlistOutputPath = args.Length >= 2 ? args[1] : "WatchlistProcessed.json";
-        OutputStructure? PreviousOutput = OutputStructure.FromFile(WatchlistOutputPath);
+        MALUserAuth MALApi = new MALUserAuth(MalTokenHandler, true);
 
-        List<OutputStructure.Entry> ParsedDataPool = [];
-        if(PreviousOutput != null)
-        {
-            ParsedDataPool.AddRange(PreviousOutput.Completed);
-            ParsedDataPool.AddRange(PreviousOutput.Dropped);
-            ParsedDataPool.AddRange(PreviousOutput.ToWatch);
-        }
+        Console.WriteLine("Requesting watchlist from MAL...");
+        List<AnimeDetails> Watchlist = MALApi.GetUserWatchlist();
 
-        MALApi MAL = new MALApi("Credentials.json");
         OutputStructure OutputWatchlist = new OutputStructure();
 
-        //process watchlist
-        OutputWatchlist.Completed = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Completed);
-        OutputWatchlist.Dropped = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Dropped);
-        OutputWatchlist.ToWatch = ProcessSection(MAL, ParsedDataPool, InputWatchlist.Watching);
-        OutputWatchlist.ToWatch.AddRange(ProcessSection(MAL, ParsedDataPool, InputWatchlist.PlanToWatch));
+        //sort shows into categories and only save necessary information
+        Console.WriteLine("Parsing watchlist...");
+        foreach (AnimeDetails Show in Watchlist)
+        {
+            OutputStructure.Entry OutputItem = new OutputStructure.Entry(Show);
+            switch (Show.WatchListStatus.Status)
+            {
+                case "completed":
+                    OutputWatchlist.Completed.Add(OutputItem);
+                    break;
+                case "dropped":
+                    OutputWatchlist.Dropped.Add(OutputItem);
+                    break;
+                default:
+                    OutputWatchlist.ToWatch.Add(OutputItem);
+                    break;
+            }
+        }
 
-        //write processed watchlist
+        //sort by recent activity
+        var Sorter = Comparer<OutputStructure.Entry>.Create((Left, Right) => Right.UpdatedAt.CompareTo(Left.UpdatedAt)); //recently watched/added first
+        OutputWatchlist.Completed.Sort(Sorter);
+        OutputWatchlist.Dropped.Sort(Sorter);
+        OutputWatchlist.ToWatch.Sort(Sorter);
+
+        Console.WriteLine("Writing watchlist to file...");
         return OutputWatchlist.ToFile(WatchlistOutputPath) ? 0 : -2;
     }
-    
-    static List<OutputStructure.Entry> ProcessSection(MALApi MAL, List<OutputStructure.Entry> ParsedDataPool, List<InputStructure.Entry> WatchlistSection)
-    {
-        List<OutputStructure.Entry> Output = [];
-
-        foreach (var InputEntry in WatchlistSection)
-        {
-            OutputStructure.Entry? OutputEntry = ParsedDataPool.Where(x => x.MALId == InputEntry.MALId).FirstOrDefault();
-
-            if (OutputEntry == null || OutputEntry.NumberOfEpisodes == 0) //only request data from MAL if item is new on watchlist or if the final number of episodes was not known the last time the item was pulled from MAL
-            {
-                OutputEntry = MAL.CreateEntryFromId(InputEntry.MALId);
-                if (OutputEntry == null)
-                {
-                    Console.WriteLine($"Failed to process entry {InputEntry.MALId} \"{InputEntry.Name}\"!");
-                    continue;
-                }
-            }
-
-            Output.Add(OutputEntry);
-        }
-
-        return Output;
-    }
-}
-
-class MALApi
-{
-    static readonly string BaseURL = "https://api.myanimelist.net/v2";
-    Credentials Creds;
-    HttpClient Client;
-    public MALApi(string CredentialsPath)
-    {
-        Credentials? ParsedCreds = Credentials.FromFile(CredentialsPath);
-        if (ParsedCreds == null) throw new Exception("Failed to read and parse MAL credentials from provided path!");
-
-        Creds = ParsedCreds;
-        Client = new HttpClient();
-        Client.DefaultRequestHeaders.Add("X-MAL-CLIENT-ID", Creds.ClientId);
-    }
-
-    /// <summary>
-    /// Requests anime details from MAL API.
-    /// </summary>
-    /// <param name="MALId">MAL Id of anime which to request details on.</param>
-    /// <returns>Filled OutputEntry on success, false otherwise.</returns>
-    public OutputStructure.Entry? CreateEntryFromId(ulong MALId)
-    {
-        const int MaxRetries = 3;
-        OutputStructure.Entry? Output = null;
-
-        RetryCatch(
-            () => {
-                string Result = Client.GetStringAsync(BaseURL + $"/anime/{MALId}?fields=title,main_picture,alternative_titles,start_date,mean,genres,num_episodes").Result;
-
-                AnimeDetails? Details = JsonConvert.DeserializeObject<AnimeDetails>(Result);
-                if (Details == null) return false;
-
-                Output = new OutputStructure.Entry(MALId)
-                {
-                    NameEnglish = Details.Titles.English,
-                    NameJapanese = Details.MainTitle,
-                    ImageURL = Details.Images.Medium,
-                    StartDate = Details.StartDate,
-                    Rating = Details.Rating,
-                    NumberOfEpisodes = Details.NumberOfEpisodes
-                };
-                Details.Genres.ForEach(Genre => Output.Genres.Add(Genre.Name));
-                
-                return true;
-            },
-            (Exception ex) =>
-            {
-                Console.WriteLine($"Failed to create entry for id {MALId}:\n" + ex.Message);
-            },
-            MaxRetries);
-
-        return Output;
-    }
-
-    /// <summary>
-    /// Utilizes Try-Catch to retry a function for a given number of times. On the final catch, the provided Catch function is called.
-    /// </summary>
-    /// <param name="Try">Code to try a provided number of times.</param>
-    /// <param name="Catch">Catch function to be called on the final catch.</param>
-    /// <param name="MaxRetries">Number of retries.</param>
-    /// <param name="Delay">Delay between retries.</param>
-    /// <returns>True if provided function was successful, false of max retries are reached without success.</returns>
-    private static bool RetryCatch(Func<bool> Try, Action<Exception> Catch, int MaxRetries, TimeSpan? Delay = null)
-    {
-        int TryCycle = 0;
-        bool Success = false;
-
-        while (!Success && TryCycle < MaxRetries)
-        {
-            TryCycle++;
-            try
-            {
-                Success = Try();
-            }
-            catch (Exception ex)
-            {
-                if (TryCycle >= MaxRetries) Catch(ex);
-                else if (Delay != null) Thread.Sleep((TimeSpan)Delay);
-            }
-        }
-
-        return Success;
-    }
-
-    private class AnimeDetails
-    {
-        [JsonProperty("id")]
-        public int? MALId { get; set; }
-
-        [JsonProperty("title")]
-        public string MainTitle { get; set; } = string.Empty;
-
-        [JsonProperty("main_picture")]
-        public MainPicture Images { get; set; }
-
-        [JsonProperty("alternative_titles")]
-        public AlternativeTitles Titles { get; set; }
-        
-        [JsonProperty("start_date")]
-        public DateOnly StartDate { get; set; }
-
-        [JsonProperty("mean")]
-        public double Rating { get; set; }
-
-        [JsonProperty("genres")]
-        public List<GenreBlock> Genres { get; set; } = [];
-
-        [JsonProperty("num_episodes")]
-        public int NumberOfEpisodes { get; set; }
-
-        
-        public struct AlternativeTitles
-        {
-            [JsonProperty("en")]
-            public string English { get; set; }
-
-            [JsonProperty("ja")]
-            public string Japanese { get; set; }
-        }
-
-        public struct MainPicture
-        {
-            [JsonProperty("medium")]
-            public string Medium { get; set; }
-
-            [JsonProperty("large")]
-            public string Large { get; set; }
-        }
-
-        public struct GenreBlock
-        {
-            [JsonProperty("id")]
-            public int Id { get; set; }
-
-            [JsonProperty("name")]
-            public string Name { get; set; }
-        }
-    }
-
-    private class Credentials : ParsableJsonStructure
-    {
-        [JsonProperty(PropertyName = "MALClientId")]
-        public string ClientId = string.Empty;
-
-        /*[JsonProperty(PropertyName = "MALClientSecret")]
-        public string ClientSecret = string.Empty;*/ //not required for used API endpoint
-
-        public static Credentials? FromFile(string Path) => FromFile<Credentials>(Path);
-    }
-}
-
-class InputStructure : ParsableJsonStructure
-{
-    public struct Entry
-    {
-        [JsonProperty(PropertyName = "link")]
-        public string Link;
-        [JsonProperty(PropertyName = "name")]
-        public string Name;
-        [JsonProperty(PropertyName = "mal_id")]
-        public ulong MALId;
-        [JsonProperty(PropertyName = "watchListType")]
-        public int ListType;
-    }
-
-    public List<Entry> Watching = [];
-    public List<Entry> Completed = [];
-    [JsonProperty(PropertyName = "Plan to Watch")]
-    public List<Entry> PlanToWatch = [];
-    public List<Entry> Dropped = [];
-
-    public static InputStructure? FromFile(string Path) => FromFile<InputStructure>(Path);
 }
 
 class OutputStructure : ParsableJsonStructure
 {
     public class Entry
     {
-        public Entry(ulong MALId)
+        public Entry(AnimeDetails Info)
         {
-            this.MALId = MALId;
-            this.Link = $"https://myanimelist.net/anime/{MALId}";
+            NameEnglish = Info.AltTitles.English;
+            NameJapanese = Info.Title;
+            MALId = Info.Id;
+            Link = $"https://myanimelist.net/anime/{MALId}";
+            ImageURL = Info.MainPicture.Medium;
+            StartDate = Info.StartDate;
+            Rating = Info.Mean;
+            NumberOfEpisodes = Info.NumEpisodes;
+
+            foreach (var Genre in Info.Genres)
+            {
+                Genres.Add(Genre.Name);
+            }
+            
+            //date from last activity
+            if(Info.WatchListStatus.FinishedAt != null)
+            {
+                UpdatedAt = (DateOnly)Info.WatchListStatus.FinishedAt;
+            } else
+            {
+                if(Info.WatchListStatus.StartedAt != null)
+                {
+                    UpdatedAt = (DateOnly)Info.WatchListStatus.StartedAt;
+                } else
+                {
+                    UpdatedAt = DateOnly.FromDateTime(Info.WatchListStatus.UpdatedAt);
+                }
+            }
         }
 
         [JsonProperty(PropertyName = "name_en")]
@@ -272,9 +128,12 @@ class OutputStructure : ParsableJsonStructure
 
         [JsonProperty("genres")]
         public List<string> Genres = [];
-        
+
         [JsonProperty("num_episodes")]
         public int NumberOfEpisodes;
+        
+        [JsonIgnore]
+        public DateOnly UpdatedAt { get; }
     }
 
     public DateTime LastUpdated = DateTime.Now;

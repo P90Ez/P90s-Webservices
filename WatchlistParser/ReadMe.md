@@ -1,8 +1,8 @@
 # WatchlistParser
 
-The goal of this parser is to convert the watchlist exported from a certain website (which shall not be named) to the format required to display the data on my custom watchlist.
+The goal of this parser is to pull the watchlist from My Anime List, strip it down and sort it.
 
-This is done by requesting the english and japanese titles, as well as the url of a preview image from MyAnimeList.
+This parser originally used an offline watchlisted (exported from a streaming site) and requested information for each show from My Anime List. The streaming site does not exist anymore, therefore i switched to MAL.
 
 ## Build
 
@@ -14,12 +14,8 @@ This is done by requesting the english and japanese titles, as well as the url o
 
 > Requires .Net 8.0 Runtime
 
-`WatchlistParser [Input] [Output]`
+`WatchlistParser [OutputPath] [CredentialsPath]`
 
-Both arguments are optional. If no input is specified, `WatchlistRaw.json` is the default value. If no output is specified, `WatchlistProcessed.json` is the default.
+Both arguments are optional. If no output is specified, `WatchlistProcessed.json` is the default. If no credentials file is specified, `Credentials.json` is the default.
 
-`make run` both builds the tool and run it. The paths are specified to take `./WatchlistRaw.json` as input and output `../AnimeWatchlist.json`, which can directly be accesses by my custom watchlist.
-
-## Todo
-
-- Improve performance (async etc.)
+`make run` both builds the tool and runs it. The paths are specified to take `../AnimeWatchlist.json` as output and `Credentials.json` as credential file.
